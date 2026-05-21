@@ -3,7 +3,7 @@ import axios from "axios";
 import NetInfo from "@react-native-community/netinfo";
 import { showGlobalToast } from "../context/ToastContext";
 
-const BASE_URL = "http://172.20.10.7:3000";
+const BASE_URL = "https://elektrijada-backend.onrender.com";
 
 // Konfiguracija za retry mehanizam
 const RETRY_CONFIG = {
