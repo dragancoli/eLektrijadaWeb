@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Frontend",
+    "slug": "Frontend",
+    "version": "1.0.0",
+    "notification": {
+      "vapidPublicKey": "BF3gXBftVUT_HjCkjAJL49EncjQraYxtFQcxk0Ui1jirBMIUc5hdOedLc18oIZ3tL1xK3cfR5dSGjVAm46Yvtwg",
+      "serviceWorkerPath": "/expo-service-worker.js"
+    },
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "98546669-11ca-48b5-83af-8a93a6ea6b4c"
+      }
+    },
+    "owner": "dragancolic",
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}
