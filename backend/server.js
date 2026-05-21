@@ -90,6 +90,11 @@ app.use("/rankings", rankings);
 app.use("/team-leader-verification", teamLeaderVerification);
 app.use("/statistics", statistics);
 
+// Health check endpoint
+app.get("/health", (req, res) => {
+    res.status(200).send("OK");
+});
+
 // 404 handler za nepostojeće rute
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
