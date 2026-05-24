@@ -511,8 +511,12 @@ const AppNavigator = () => {
     );
   }
 
+  const linking = {
+    prefixes: [], // Dovoljno da React Navigation aktivira web history API
+  };
+
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} linking={linking}>
       <MainTabs />
     </NavigationContainer>
   );
