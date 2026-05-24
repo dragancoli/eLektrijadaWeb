@@ -34,12 +34,14 @@ const SportsScreen = () => {
   };
 
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => {
-      setExpoPushToken(token);
-      if (token) {
-        fetchSubscriptions(token);
-      }
-    });
+    if (Platform.OS !== "web") {
+      registerForPushNotificationsAsync().then(token => {
+        setExpoPushToken(token);
+        if (token) {
+          fetchSubscriptions(token);
+        }
+      });
+    }
     fetchSportTypes();
     fetchMatches();
   }, []);
@@ -322,16 +324,18 @@ const SportsScreen = () => {
         </View>
 
         {/* Notification Bell */}
-        <TouchableOpacity 
-          style={styles.notificationButton}
-          onPress={() => toggleNotification(match.id)}
-        >
-          <Ionicons 
-            name={subscribedMatches.has(match.id) ? "notifications" : "notifications-outline"} 
-            size={24} 
-            color={subscribedMatches.has(match.id) ? "#10345bff" : "#999"} 
-          />
-        </TouchableOpacity>
+        {Platform.OS !== "web" && (
+          <TouchableOpacity 
+            style={styles.notificationButton}
+            onPress={() => toggleNotification(match.id)}
+          >
+            <Ionicons 
+              name={subscribedMatches.has(match.id) ? "notifications" : "notifications-outline"} 
+              size={24} 
+              color={subscribedMatches.has(match.id) ? "#10345bff" : "#999"} 
+            />
+          </TouchableOpacity>
+        )}
       </View>
     );
   };

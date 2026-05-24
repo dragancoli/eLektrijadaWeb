@@ -171,75 +171,82 @@ const CompetitionsNavigator = () => {
   );
 };
 
-const WebNavBar = ({ navigation, currentRouteName, showBack, setScheduleVisible, setNotificationsVisible }) => {
+const WebNavBar = ({ navigation, currentRouteName, showBack, setScheduleVisible }) => {
   const tabs = ["Početna", "Takmičenja", "Sport", "Rang Lista", "Profil"];
-  const [localSearchQuery, setLocalSearchQuery] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
   const { width } = useWindowDimensions();
-  const compact = width < 700; // compact layout for small web widths
-
-  const handleSearchSubmit = () => {
-    navigation.navigate("Početna", {
-      screen: "HomeScreen",
-      params: { webSearchText: localSearchQuery },
-    });
-  };
+  const compact = width < 700;
 
   return (
-    <View style={styles.webNavBar}>
-      <View style={styles.webNavLeft}>
-        {showBack ? (
-          <TouchableOpacity onPress={globalGoBack} style={styles.webBackButton}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 28, marginLeft: 12 }} />
+    <View style={{ zIndex: 1000, backgroundColor: "#fff" }}>
+      <View style={styles.webNavBar}>
+        <View style={styles.webNavLeft}>
+          {compact && (
+            <TouchableOpacity onPress={() => setMenuOpen(!menuOpen)} style={[styles.webIconButton, { marginRight: 10, borderWidth: 0 }]}>
+              <Ionicons name={menuOpen ? "close" : "menu"} size={28} color="#000" />
+            </TouchableOpacity>
+          )}
+          {showBack ? (
+            <TouchableOpacity onPress={globalGoBack} style={styles.webBackButton}>
+              <Ionicons name="chevron-back" size={24} color="#000" />
+            </TouchableOpacity>
+          ) : (
+            !compact && <View style={{ width: 28, marginLeft: 12 }} />
+          )}
+          <Text style={[styles.webLogoText, compact && styles.webLogoTextCompact]}>ELEKTRIJADA</Text>
+        </View>
+
+        {!compact && (
+          <View style={styles.webNavLinks}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.webNavLinksContent}>
+              {tabs.map((tabName, index) => {
+                const isFocused = currentRouteName === tabName;
+
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => navigation.navigate(tabName)}
+                    style={styles.webNavItem}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={[styles.webNavText, isFocused && styles.webNavTextActive]}>
+                      {tabName.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
         )}
-        <Text style={[styles.webLogoText, compact && styles.webLogoTextCompact]}>ELEKTRIJADA</Text>
+
+        <View style={styles.webNavRight}>
+          <TouchableOpacity onPress={() => setScheduleVisible(true)} style={styles.webIconButton}>
+            <Ionicons name="calendar-outline" size={20} color="#000" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.webNavLinks}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.webNavLinksContent}>
+      {menuOpen && compact && (
+        <View style={styles.mobileMenuOverlay}>
           {tabs.map((tabName, index) => {
             const isFocused = currentRouteName === tabName;
-
             return (
               <TouchableOpacity
                 key={index}
-                onPress={() => navigation.navigate(tabName)}
-                style={[styles.webNavItem, compact && styles.webNavItemCompact]}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.mobileMenuItem}
+                onPress={() => {
+                  navigation.navigate(tabName);
+                  setMenuOpen(false);
+                }}
               >
-                <Text style={[styles.webNavText, isFocused && styles.webNavTextActive]}>
+                <Text style={[styles.mobileMenuText, isFocused && styles.mobileMenuTextActive]}>
                   {tabName.toUpperCase()}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
-      </View>
-
-      <View style={styles.webNavRight}>
-        {currentRouteName === "Početna" && !compact && (
-          <View style={styles.webSearchContainer}>
-            <Ionicons name="search" size={18} color="#888" style={styles.webSearchIcon} />
-            <TextInput
-              style={styles.webSearchInput}
-              placeholder="Pretraži..."
-              placeholderTextColor="#888"
-              value={localSearchQuery}
-              onChangeText={setLocalSearchQuery}
-              onSubmitEditing={handleSearchSubmit}
-            />
-          </View>
-        )}
-
-        <TouchableOpacity onPress={() => setScheduleVisible(true)} style={styles.webIconButton}>
-          <Ionicons name="calendar-outline" size={20} color="#000" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setNotificationsVisible(true)} style={styles.webIconButton}>
-          <Ionicons name="notifications-outline" size={20} color="#000" />
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -284,7 +291,6 @@ const MainTabs = () => {
                 currentRouteName={route.name}
                 showBack={showBack}
                 setScheduleVisible={setScheduleVisible}
-                setNotificationsVisible={setNotificationsVisible}
               />
             ) : undefined,
 
@@ -462,27 +468,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  webSearchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f0f0f0", // Svijetlo siva pozadina
-    borderRadius: 20,
-    height: 35,
-    width: "auto",
-    maxWidth: 220, // Širina search bara
-    marginRight: 10,
-    paddingHorizontal: 10,
+  mobileMenuOverlay: {
+    position: "absolute",
+    top: 70,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eaeaea",
+    paddingBottom: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+    zIndex: 999,
   },
-  webSearchIcon: {
-    marginRight: 5,
+  mobileMenuItem: {
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
   },
-  webSearchInput: {
-    flex: 1,
-    height: "100%",
-    fontSize: 14,
-    color: "#000",
-    outlineStyle: "none", // Jako bitno za web: uklanja onaj ružni plavi/crni okvir kad klikneš na input
+  mobileMenuText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
+  mobileMenuTextActive: {
+    color: "#fa8d10ff",
   },
 });
 

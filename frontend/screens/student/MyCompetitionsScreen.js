@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -140,20 +141,22 @@ const MyCompetitionsScreen = () => {
               <Text style={styles.resultsBtnText}>Pogledaj bodove</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity
-            style={[styles.notifyBtn, notifEnabled && styles.notifyBtnActive]}
-            onPress={() => toggleNotification(notifKey)}
-          >
-            <Ionicons
-              name={notifEnabled ? "notifications" : "notifications-outline"}
-              size={16}
-              color={notifEnabled ? "#fff" : "#10345bff"}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.notifyBtnText, notifEnabled && styles.notifyBtnTextActive]}>
-              {notifEnabled ? "Obavještenja uključena" : "Uključi obavještenja"}
-            </Text>
-          </TouchableOpacity>
+          {Platform.OS !== "web" && (
+            <TouchableOpacity
+              style={[styles.notifyBtn, notifEnabled && styles.notifyBtnActive]}
+              onPress={() => toggleNotification(notifKey)}
+            >
+              <Ionicons
+                name={notifEnabled ? "notifications" : "notifications-outline"}
+                size={16}
+                color={notifEnabled ? "#fff" : "#10345bff"}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.notifyBtnText, notifEnabled && styles.notifyBtnTextActive]}>
+                {notifEnabled ? "Obavještenja uključena" : "Uključi obavještenja"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );

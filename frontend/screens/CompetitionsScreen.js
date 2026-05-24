@@ -35,12 +35,14 @@ const CompetitionsScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => {
-      setExpoPushToken(token);
-      if (token) {
-        fetchSubscriptions(token);
-      }
-    });
+    if (Platform.OS !== "web") {
+      registerForPushNotificationsAsync().then(token => {
+        setExpoPushToken(token);
+        if (token) {
+          fetchSubscriptions(token);
+        }
+      });
+    }
     // Generiši 5 datuma: Prekjuče, Juče, Danas, Sutra, Prekosutra
     const today = new Date();
     const datesList = [
@@ -272,21 +274,23 @@ const CompetitionsScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.notificationContainer}>
-            <TouchableOpacity 
-              style={styles.notificationButton}
-              onPress={() => toggleNotification(item.id)}
-            >
-              <Ionicons 
-                name={isSubscribed ? "notifications" : "notifications-outline"} 
-                size={32} 
-                color={isSubscribed ? "#10345bff" : "#999"} 
-              />
-              <Text style={styles.notificationText}>
-                {isSubscribed ? "Pratite ovo takmičenje" : "Pratite za obavještenja"}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          Platform.OS !== "web" ? (
+            <View style={styles.notificationContainer}>
+              <TouchableOpacity 
+                style={styles.notificationButton}
+                onPress={() => toggleNotification(item.id)}
+              >
+                <Ionicons 
+                  name={isSubscribed ? "notifications" : "notifications-outline"} 
+                  size={32} 
+                  color={isSubscribed ? "#10345bff" : "#999"} 
+                />
+                <Text style={styles.notificationText}>
+                  {isSubscribed ? "Pratite ovo takmičenje" : "Pratite za obavještenja"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null
         )}
       </View>
     );

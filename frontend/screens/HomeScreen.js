@@ -161,23 +161,20 @@ const HomeScreen = ({ navigation, route }) => {
 
   return (
     <View style={styles.container}>
-      {}
-      {Platform.OS !== "web" && (
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Pretražite..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery("")}>
-              <Ionicons name="close-circle" size={20} color="#999" />
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Pretražite..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery("")}>
+            <Ionicons name="close-circle" size={20} color="#999" />
+          </TouchableOpacity>
+        )}
+      </View>
 
       <ScrollView 
         showsVerticalScrollIndicator={false}
@@ -276,6 +273,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: "#333",
+    outlineStyle: "none",
   },
   carouselContainer: {
     marginBottom: 20,
