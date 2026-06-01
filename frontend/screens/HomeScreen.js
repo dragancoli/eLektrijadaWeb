@@ -234,12 +234,11 @@ const HomeScreen = ({ navigation, route }) => {
               <Text style={styles.emptyText}>Nema dostupnih novosti</Text>
             </View>
           ) : (
-            <FlatList
-              data={allNews}
-              renderItem={renderNewsItem}
-              keyExtractor={(item) => item.id.toString()}
-              scrollEnabled={false}
-            />
+            allNews.map((item) => (
+              <React.Fragment key={item.id.toString()}>
+                {renderNewsItem({ item })}
+              </React.Fragment>
+            ))
           )}
         </View>
       </ScrollView>

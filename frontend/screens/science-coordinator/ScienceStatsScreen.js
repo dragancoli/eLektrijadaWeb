@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  RefreshControl, TouchableOpacity,
+  RefreshControl, TouchableOpacity, Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
@@ -12,10 +12,11 @@ import SimpleBarChart from "../../components/stats/SimpleBarChart";
 import SimpleDonutChart from "../../components/stats/SimpleDonutChart";
 import RankingList from "../../components/stats/RankingList";
 import VerticalBarChart from "../../components/stats/VerticalBarChart";
+import { exportScienceStatsPdf } from "../../utils/exportScienceStatsPdf";
 
 const TABS = [
   { key: "scores", label: "Bodovi", icon: "bar-chart-outline" },
-  { key: "teams", label: "Top timovi", icon: "trophy-outline" },
+  { key: "participants", label: "Učesnici", icon: "people-outline" },
   { key: "solutions", label: "Rješenja", icon: "document-text-outline" },
   { key: "mentors", label: "Mentori", icon: "school-outline" },
 ];
@@ -28,6 +29,7 @@ const ScienceStatsScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("scores");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => { fetchYears(); }, []);
   useEffect(() => { if (selectedYear) fetchStats(); }, [selectedYear]);
@@ -57,6 +59,18 @@ const ScienceStatsScreen = () => {
     setRefreshing(true); await fetchStats(); setRefreshing(false);
   }, [selectedYear]);
 
+  const handleExportPdf = async () => {
+    if (!stats || !selectedYear) return;
+    setExporting(true);
+    try {
+      await exportScienceStatsPdf(stats, selectedYear);
+    } catch (error) {
+      Alert.alert("Greška", "Nije uspjelo generisanje PDF-a.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!stats && loading) {
     return (
       <View style={styles.center}>
@@ -81,15 +95,14 @@ const ScienceStatsScreen = () => {
             barColor="#4CAF50"
           />
         );
-      case "teams":
+      case "participants":
         return (
-          <RankingList
-            title="Top 5 timova po bodovima"
-            data={(stats?.topTeams || []).map((r, i) => ({
-              name: r.team_name, subtitle: r.faculty_name,
-              value: Number(r.total_score), position: i + 1,
+          <SimpleBarChart
+            title={`Učesnici po fakultetima (${selectedYear})`}
+            data={(stats?.participantsByFaculty || []).map((r) => ({
+              label: r.faculty_name, value: Number(r.participant_count),
             }))}
-            valueLabel="bodova"
+            barColor="#10345bff"
           />
         );
       case "solutions":
@@ -123,8 +136,24 @@ const ScienceStatsScreen = () => {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <Ionicons name="flask" size={28} color="#4CAF50" />
-        <Text style={styles.headerTitle}>Statistike nauke</Text>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Ionicons name="flask" size={28} color="#4CAF50" />
+          <Text style={styles.headerTitle}>Statistike nauke</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.exportBtn, exporting && styles.exportBtnDisabled]}
+          onPress={handleExportPdf}
+          disabled={exporting || !stats}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="download-outline" size={18} color="#fff" />
+          )}
+          <Text style={styles.exportBtnText}>
+            {exporting ? "Izvoz..." : "PDF"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.yearRow}>
@@ -165,8 +194,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5", paddingHorizontal: 16 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f5f5f5" },
   loadingText: { marginTop: 12, color: "#888", fontSize: 14 },
-  header: { flexDirection: "row", alignItems: "center", marginTop: 16, marginBottom: 8 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16, marginBottom: 8 },
   headerTitle: { fontSize: 22, fontWeight: "800", color: "#1a1a2e", marginLeft: 10 },
+  exportBtn: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "#4CAF50", paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 8,
+  },
+  exportBtnDisabled: { opacity: 0.6 },
+  exportBtnText: { color: "#fff", fontWeight: "700", fontSize: 13, marginLeft: 6 },
   yearRow: { marginBottom: 14 },
   yearBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, backgroundColor: "#fff", marginRight: 8, borderWidth: 1, borderColor: "#e0e0e0" },
   yearBtnActive: { backgroundColor: "#10345bff", borderColor: "#10345bff" },

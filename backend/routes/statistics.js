@@ -61,13 +61,36 @@ router.get("/organizer", authMiddleware, async (req, res) => {
        LIMIT 10`, [year]
     );
 
-    // Trend takmičenja po godinama
-    const competitionTrend = await pool.query(
-      `SELECT year, SUM(sport_count) AS sport, SUM(science_count) AS science FROM (
-         SELECT "Year" AS year, COUNT(*) AS sport_count, 0 AS science_count FROM "SPORT_COMPETITION" GROUP BY "Year"
+    // Pregled takmičenja po disciplinama za izabranu godinu
+    const competitionsByDiscipline = await pool.query(
+      `SELECT name, type, team_count FROM (
+         SELECT s."Name" AS name, 'Sport' AS type, COUNT(t."IdTeam") AS team_count
+         FROM "SPORT_COMPETITION" sc
+         JOIN "SPORT" s ON sc."IdSport" = s."IdSport"
+         LEFT JOIN "TEAM" t ON sc."IdSportCompetition" = t."IdSportCompetition"
+         WHERE sc."Year" = $1
+         GROUP BY s."Name"
          UNION ALL
-         SELECT "Year" AS year, 0 AS sport_count, COUNT(*) AS science_count FROM "SCIENCE_COMPETITION" GROUP BY "Year"
-       ) sub GROUP BY year ORDER BY year`
+         SELECT s."Name" AS name, 'Nauka' AS type, COUNT(t."IdTeam") AS team_count
+         FROM "SCIENCE_COMPETITION" sc
+         JOIN "SCIENCE" s ON sc."IdScience" = s."IdScience"
+         LEFT JOIN "TEAM" t ON sc."IdScienceCompetition" = t."IdScienceCompetition"
+         WHERE sc."Year" = $1
+         GROUP BY s."Name"
+       ) sub ORDER BY team_count DESC`, [year]
+    );
+
+    // Raspodjela timova: Sport vs Nauka
+    const sportVsScienceTeams = await pool.query(
+      `SELECT 'Sport' AS type, COUNT(*) AS team_count
+       FROM "TEAM" t
+       JOIN "SPORT_COMPETITION" sc ON t."IdSportCompetition" = sc."IdSportCompetition"
+       WHERE sc."Year" = $1
+       UNION ALL
+       SELECT 'Nauka' AS type, COUNT(*) AS team_count
+       FROM "TEAM" t
+       JOIN "SCIENCE_COMPETITION" sc ON t."IdScienceCompetition" = sc."IdScienceCompetition"
+       WHERE sc."Year" = $1`, [year]
     );
 
     res.json({
@@ -80,7 +103,8 @@ router.get("/organizer", authMiddleware, async (req, res) => {
       teamsByFaculty: teamsByFaculty.rows,
       matchStatuses: matchStatuses.rows,
       facultyRanking: facultyRanking.rows,
-      competitionTrend: competitionTrend.rows,
+      competitionsByDiscipline: competitionsByDiscipline.rows,
+      sportVsScienceTeams: sportVsScienceTeams.rows,
     });
   } catch (error) {
     console.error("Organizer stats error:", error);
@@ -116,29 +140,30 @@ router.get("/science-coordinator", authMiddleware, async (req, res) => {
 
     // Prosjek bodova po takmičenju
     const avgScoreByCompetition = await pool.query(
-      `SELECT s."Name" AS competition_name, ROUND(AVG(ur."Score"), 2) AS avg_score
-       FROM "USER_RESULTS" ur
-       JOIN "SCIENCE_COMPETITION" sc ON ur."IdScienceCompetition" = sc."IdScienceCompetition"
+      `WITH UserTotals AS (
+         SELECT "IdScienceCompetition", "IdUser", SUM("Score") AS total_score
+         FROM "USER_RESULTS"
+         GROUP BY "IdScienceCompetition", "IdUser"
+       )
+       SELECT s."Name" AS competition_name, COALESCE(ROUND(AVG(ut.total_score), 2), 0) AS avg_score
+       FROM "SCIENCE_COMPETITION" sc
        JOIN "SCIENCE" s ON sc."IdScience" = s."IdScience"
+       LEFT JOIN UserTotals ut ON ut."IdScienceCompetition" = sc."IdScienceCompetition"
        WHERE sc."Year" = $1
        GROUP BY s."Name"
        ORDER BY avg_score DESC`, [year]
     );
 
-    // Top 5 timova
-    const topTeams = await pool.query(
-      `SELECT t."Name" AS team_name, f."Name" AS faculty_name,
-              COALESCE(SUM(ur."Score"), 0) AS total_score
-       FROM "TEAM" t
+    // Učesnici po fakultetima
+    const participantsByFaculty = await pool.query(
+      `SELECT f."Name" AS faculty_name, COUNT(DISTINCT tm."IdUser") AS participant_count
+       FROM "TEAM_MEMBERS" tm
+       JOIN "TEAM" t ON tm."IdTeam" = t."IdTeam"
        JOIN "FACULTY" f ON t."IdFaculty" = f."IdFaculty"
        JOIN "SCIENCE_COMPETITION" sc ON t."IdScienceCompetition" = sc."IdScienceCompetition"
-       LEFT JOIN "TEAM_MEMBERS" tm ON t."IdTeam" = tm."IdTeam"
-       LEFT JOIN "USER_RESULTS" ur ON tm."IdUser" = ur."IdUser"
-         AND ur."IdScienceCompetition" = sc."IdScienceCompetition"
        WHERE sc."Year" = $1
-       GROUP BY t."Name", f."Name"
-       ORDER BY total_score DESC
-       LIMIT 5`, [year]
+       GROUP BY f."Name"
+       ORDER BY participant_count DESC`, [year]
     );
 
     // Mentor pregled
@@ -167,7 +192,7 @@ router.get("/science-coordinator", authMiddleware, async (req, res) => {
         participants: Number(participantsCount.rows[0].count),
       },
       avgScoreByCompetition: avgScoreByCompetition.rows,
-      topTeams: topTeams.rows,
+      participantsByFaculty: participantsByFaculty.rows,
       mentorOverview: mentorOverview.rows,
       solutionStatus: solutionStatus.rows[0] || { with_solution: 0, without_solution: 0 },
     });
@@ -244,19 +269,13 @@ router.get("/sport-coordinator", authMiddleware, async (req, res) => {
        ORDER BY sport_count DESC`, [year]
     );
 
-    // Nadolazeći mečevi
-    const upcomingMatches = await pool.query(
-      `SELECT m."IdMatch", t1."Name" AS team1, t2."Name" AS team2,
-              s."Name" AS sport_name, a."StartDate", a."Location", m."Stage"
+    // Status mečeva
+    const matchStatuses = await pool.query(
+      `SELECT m."Status", COUNT(*) AS count
        FROM "MATCH" m
-       JOIN "TEAM" t1 ON m."IdTeam1" = t1."IdTeam"
-       JOIN "TEAM" t2 ON m."IdTeam2" = t2."IdTeam"
        JOIN "SPORT_COMPETITION" sc ON m."IdSportCompetition" = sc."IdSportCompetition"
-       JOIN "SPORT" s ON sc."IdSport" = s."IdSport"
-       JOIN "APPOINTMENT" a ON m."IdAppointment" = a."IdAppointment"
-       WHERE sc."Year" = $1 AND a."StartDate" > NOW() AND m."Status" != 'Završen'
-       ORDER BY a."StartDate" ASC
-       LIMIT 10`, [year]
+       WHERE sc."Year" = $1
+       GROUP BY m."Status"`, [year]
     );
 
     res.json({
@@ -269,7 +288,7 @@ router.get("/sport-coordinator", authMiddleware, async (req, res) => {
       teamsBySport: teamsBySport.rows,
       recentResults: recentResults.rows,
       facultyEngagement: facultyEngagement.rows,
-      upcomingMatches: upcomingMatches.rows,
+      matchStatuses: matchStatuses.rows,
     });
   } catch (error) {
     console.error("Sport coordinator stats error:", error);
@@ -300,30 +319,46 @@ router.get("/mentor", authMiddleware, async (req, res) => {
 
     // Rezultati po takmičenju
     const resultsByCompetition = await pool.query(
-      `SELECT s."Name" AS competition_name, sc."Year" AS year,
-              ROUND(AVG(ur."Score"), 2) AS avg_score,
-              COUNT(DISTINCT ur."IdUser") AS num_participants
+      `WITH UserTotals AS (
+         SELECT "IdScienceCompetition", "IdUser", SUM("Score") AS total_score
+         FROM "USER_RESULTS"
+         GROUP BY "IdScienceCompetition", "IdUser"
+       )
+       SELECT s."Name" AS competition_name, sc."Year" AS year,
+              COALESCE(ROUND(AVG(ut.total_score), 2), 0) AS avg_score,
+              COUNT(DISTINCT ut."IdUser") AS num_participants
        FROM "SCIENCE_COMPETITION" sc
        JOIN "SCIENCE" s ON sc."IdScience" = s."IdScience"
-       LEFT JOIN "USER_RESULTS" ur ON ur."IdScienceCompetition" = sc."IdScienceCompetition"
+       LEFT JOIN UserTotals ut ON ut."IdScienceCompetition" = sc."IdScienceCompetition"
        WHERE sc."IdMentor" = $1
        GROUP BY s."Name", sc."Year", sc."IdScienceCompetition"
        ORDER BY sc."Year" DESC`, [mentorId]
     );
 
-    // Top studenti
-    const topStudents = await pool.query(
-      `SELECT u."Name" || ' ' || u."Lastname" AS student_name,
-              f."Name" AS faculty_name,
-              SUM(ur."Score") AS total_score
-       FROM "USER_RESULTS" ur
-       JOIN "USER" u ON ur."IdUser" = u."IdUser"
-       JOIN "FACULTY" f ON u."IdFaculty" = f."IdFaculty"
-       JOIN "SCIENCE_COMPETITION" sc ON ur."IdScienceCompetition" = sc."IdScienceCompetition"
+    // Raspodjela bodova po takmičenju
+    const scoreDistributions = await pool.query(
+      `WITH UserTotals AS (
+         SELECT ur."IdScienceCompetition", ur."IdUser", SUM(ur."Score") AS "TotalScore"
+         FROM "USER_RESULTS" ur
+         GROUP BY ur."IdScienceCompetition", ur."IdUser"
+       )
+       SELECT s."Name" AS competition_name, sc."Year" AS year, sc."IdScienceCompetition" as id,
+         SUM(CASE WHEN ut."TotalScore" >= 0 AND ut."TotalScore" < 10 THEN 1 ELSE 0 END) AS "range_0_9",
+         SUM(CASE WHEN ut."TotalScore" >= 10 AND ut."TotalScore" < 20 THEN 1 ELSE 0 END) AS "range_10_19",
+         SUM(CASE WHEN ut."TotalScore" >= 20 AND ut."TotalScore" < 30 THEN 1 ELSE 0 END) AS "range_20_29",
+         SUM(CASE WHEN ut."TotalScore" >= 30 AND ut."TotalScore" < 40 THEN 1 ELSE 0 END) AS "range_30_39",
+         SUM(CASE WHEN ut."TotalScore" >= 40 AND ut."TotalScore" < 50 THEN 1 ELSE 0 END) AS "range_40_49",
+         SUM(CASE WHEN ut."TotalScore" >= 50 AND ut."TotalScore" < 60 THEN 1 ELSE 0 END) AS "range_50_59",
+         SUM(CASE WHEN ut."TotalScore" >= 60 AND ut."TotalScore" < 70 THEN 1 ELSE 0 END) AS "range_60_69",
+         SUM(CASE WHEN ut."TotalScore" >= 70 AND ut."TotalScore" < 80 THEN 1 ELSE 0 END) AS "range_70_79",
+         SUM(CASE WHEN ut."TotalScore" >= 80 AND ut."TotalScore" < 90 THEN 1 ELSE 0 END) AS "range_80_89",
+         SUM(CASE WHEN ut."TotalScore" >= 90 THEN 1 ELSE 0 END) AS "range_90_100"
+       FROM UserTotals ut
+       JOIN "SCIENCE_COMPETITION" sc ON ut."IdScienceCompetition" = sc."IdScienceCompetition"
+       JOIN "SCIENCE" s ON sc."IdScience" = s."IdScience"
        WHERE sc."IdMentor" = $1
-       GROUP BY u."Name", u."Lastname", f."Name"
-       ORDER BY total_score DESC
-       LIMIT 5`, [mentorId]
+       GROUP BY s."Name", sc."Year", sc."IdScienceCompetition"
+       ORDER BY sc."Year" DESC, s."Name" ASC`, [mentorId]
     );
 
     // Pozicija timova
@@ -355,7 +390,7 @@ router.get("/mentor", authMiddleware, async (req, res) => {
         participants: Number(participantsCount.rows[0].count),
       },
       resultsByCompetition: resultsByCompetition.rows,
-      topStudents: topStudents.rows,
+      scoreDistributions: scoreDistributions.rows,
       teamPositions: teamPositions.rows,
       competitionStatuses: competitionStatuses.rows,
     });
@@ -374,15 +409,23 @@ router.get("/team-leader", authMiddleware, async (req, res) => {
 
     const leaderId = req.user.IdUser;
 
+    const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+
     // KPI kartice
     const teamsCount = await pool.query(
-      `SELECT COUNT(*) AS count FROM "TEAM" WHERE "IdLeader" = $1`, [leaderId]
+      `SELECT COUNT(*) AS count
+       FROM "TEAM" t
+       LEFT JOIN "SPORT_COMPETITION" sc ON t."IdSportCompetition" = sc."IdSportCompetition"
+       LEFT JOIN "SCIENCE_COMPETITION" snc ON t."IdScienceCompetition" = snc."IdScienceCompetition"
+       WHERE t."IdLeader" = $1 AND COALESCE(sc."Year", snc."Year") = $2`, [leaderId, year]
     );
     const membersCount = await pool.query(
       `SELECT COUNT(DISTINCT tm."IdUser") AS count
        FROM "TEAM_MEMBERS" tm
        JOIN "TEAM" t ON tm."IdTeam" = t."IdTeam"
-       WHERE t."IdLeader" = $1`, [leaderId]
+       LEFT JOIN "SPORT_COMPETITION" sc ON t."IdSportCompetition" = sc."IdSportCompetition"
+       LEFT JOIN "SCIENCE_COMPETITION" snc ON t."IdScienceCompetition" = snc."IdScienceCompetition"
+       WHERE t."IdLeader" = $1 AND COALESCE(sc."Year", snc."Year") = $2`, [leaderId, year]
     );
 
     // Pozicije timova
@@ -397,8 +440,8 @@ router.get("/team-leader", authMiddleware, async (req, res) => {
        LEFT JOIN "SPORT" s ON sc."IdSport" = s."IdSport"
        LEFT JOIN "SCIENCE_COMPETITION" snc ON t."IdScienceCompetition" = snc."IdScienceCompetition"
        LEFT JOIN "SCIENCE" sci ON snc."IdScience" = sci."IdScience"
-       WHERE t."IdLeader" = $1
-       ORDER BY t."Position" ASC NULLS LAST`, [leaderId]
+       WHERE t."IdLeader" = $1 AND COALESCE(sc."Year", snc."Year") = $2
+       ORDER BY t."Position" ASC NULLS LAST`, [leaderId, year]
     );
 
     // Verifikovani vs neverifikovani
@@ -408,19 +451,23 @@ router.get("/team-leader", authMiddleware, async (req, res) => {
          SUM(CASE WHEN tm."Verified" = false OR tm."Verified" IS NULL THEN 1 ELSE 0 END) AS unverified
        FROM "TEAM_MEMBERS" tm
        JOIN "TEAM" t ON tm."IdTeam" = t."IdTeam"
-       WHERE t."IdLeader" = $1`, [leaderId]
+       LEFT JOIN "SPORT_COMPETITION" sc ON t."IdSportCompetition" = sc."IdSportCompetition"
+       LEFT JOIN "SCIENCE_COMPETITION" snc ON t."IdScienceCompetition" = snc."IdScienceCompetition"
+       WHERE t."IdLeader" = $1 AND COALESCE(sc."Year", snc."Year") = $2`, [leaderId, year]
     );
 
-    // Bodovi po timu (naučna takmičenja)
-    const teamScores = await pool.query(
-      `SELECT t."Name" AS team_name, COALESCE(SUM(ur."Score"), 0) AS total_score
-       FROM "TEAM" t
-       LEFT JOIN "TEAM_MEMBERS" tm ON t."IdTeam" = tm."IdTeam"
-       LEFT JOIN "USER_RESULTS" ur ON tm."IdUser" = ur."IdUser"
-         AND ur."IdScienceCompetition" = t."IdScienceCompetition"
-       WHERE t."IdLeader" = $1 AND t."IdScienceCompetition" IS NOT NULL
-       GROUP BY t."Name"
-       ORDER BY total_score DESC`, [leaderId]
+    // Učesnici po takmičenju
+    const participantsByCompetition = await pool.query(
+      `SELECT COALESCE(s."Name", sci."Name") AS competition_name,
+              COUNT(DISTINCT tm."IdUser") AS participant_count
+       FROM "TEAM_MEMBERS" tm
+       JOIN "TEAM" t ON tm."IdTeam" = t."IdTeam"
+       LEFT JOIN "SPORT_COMPETITION" sc ON t."IdSportCompetition" = sc."IdSportCompetition"
+       LEFT JOIN "SPORT" s ON sc."IdSport" = s."IdSport"
+       LEFT JOIN "SCIENCE_COMPETITION" snc ON t."IdScienceCompetition" = snc."IdScienceCompetition"
+       LEFT JOIN "SCIENCE" sci ON snc."IdScience" = sci."IdScience"
+       WHERE t."IdLeader" = $1 AND COALESCE(sc."Year", snc."Year") = $2
+       GROUP BY competition_name`, [leaderId, year]
     );
 
     // Nadolazeći mečevi
@@ -433,9 +480,9 @@ router.get("/team-leader", authMiddleware, async (req, res) => {
        JOIN "SPORT_COMPETITION" sc ON m."IdSportCompetition" = sc."IdSportCompetition"
        JOIN "SPORT" s ON sc."IdSport" = s."IdSport"
        JOIN "APPOINTMENT" a ON m."IdAppointment" = a."IdAppointment"
-       WHERE (t1."IdLeader" = $1 OR t2."IdLeader" = $1) AND a."StartDate" > NOW()
+       WHERE (t1."IdLeader" = $1 OR t2."IdLeader" = $1) AND a."StartDate" > NOW() AND sc."Year" = $2
        ORDER BY a."StartDate" ASC
-       LIMIT 10`, [leaderId]
+       LIMIT 10`, [leaderId, year]
     );
 
     res.json({
@@ -445,7 +492,7 @@ router.get("/team-leader", authMiddleware, async (req, res) => {
       },
       teamPositions: teamPositions.rows,
       verificationStatus: verificationStatus.rows[0] || { verified: 0, unverified: 0 },
-      teamScores: teamScores.rows,
+      participantsByCompetition: participantsByCompetition.rows,
       upcomingMatches: upcomingMatches.rows,
     });
   } catch (error) {

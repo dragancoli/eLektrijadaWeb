@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  RefreshControl, TouchableOpacity,
+  RefreshControl, TouchableOpacity, Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
@@ -9,13 +9,14 @@ import apiClient from "../../api/client";
 import StatCard from "../../components/stats/StatCard";
 import SectionTabs from "../../components/stats/SectionTabs";
 import VerticalBarChart from "../../components/stats/VerticalBarChart";
-import TimelineList from "../../components/stats/TimelineList";
+import SimpleDonutChart from "../../components/stats/SimpleDonutChart";
+import { exportSportStatsPdf } from "../../utils/exportSportStatsPdf";
 
 const TABS = [
   { key: "sports", label: "Po sportovima", icon: "football-outline" },
   { key: "results", label: "Rezultati", icon: "list-outline" },
   { key: "faculties", label: "Fakulteti", icon: "school-outline" },
-  { key: "upcoming", label: "Raspored", icon: "calendar-outline" },
+  { key: "status", label: "Status", icon: "pie-chart-outline" },
 ];
 
 const SportStatsScreen = () => {
@@ -24,8 +25,10 @@ const SportStatsScreen = () => {
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("sports");
+  const [sportFilter, setSportFilter] = useState("all");
+  const [exporting, setExporting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => { fetchYears(); }, []);
   useEffect(() => { if (selectedYear) fetchStats(); }, [selectedYear]);
@@ -55,6 +58,18 @@ const SportStatsScreen = () => {
     setRefreshing(true); await fetchStats(); setRefreshing(false);
   }, [selectedYear]);
 
+  const handleExportPdf = async () => {
+    if (!stats || !selectedYear) return;
+    setExporting(true);
+    try {
+      await exportSportStatsPdf(stats, selectedYear);
+    } catch (error) {
+      Alert.alert("Greška", "Nije uspjelo generisanje PDF-a.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!stats && loading) {
     return (
       <View style={styles.center}>
@@ -65,6 +80,47 @@ const SportStatsScreen = () => {
   }
 
   const kpi = stats?.kpiCards || {};
+
+  const getUniqueSports = () => {
+    const results = stats?.recentResults || [];
+    const sports = new Set(results.map((r) => r.sport_name));
+    return ["all", ...Array.from(sports)];
+  };
+
+  const getFilteredResults = () => {
+    const results = stats?.recentResults || [];
+    if (sportFilter === "all") return results;
+    return results.filter((r) => r.sport_name === sportFilter);
+  };
+
+  const renderSportToggle = () => {
+    const sports = getUniqueSports();
+    if (sports.length <= 1) return null;
+
+    return (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.toggleRow}>
+        {sports.map((sport) => (
+          <TouchableOpacity
+            key={sport}
+            style={[
+              styles.toggleBtn,
+              sportFilter === sport && styles.toggleBtnActive,
+            ]}
+            onPress={() => setSportFilter(sport)}
+          >
+            <Text
+              style={[
+                styles.toggleBtnText,
+                sportFilter === sport && styles.toggleBtnTextActive,
+              ]}
+            >
+              {sport === "all" ? "Sve" : sport}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    );
+  };
 
   const renderSection = () => {
     switch (activeTab) {
@@ -78,32 +134,46 @@ const SportStatsScreen = () => {
             barColor="#E91E63"
           />
         );
-      case "results":
-        return stats?.recentResults?.length > 0 ? (
+      case "results": {
+        if (!(stats?.recentResults?.length > 0)) {
+          return (
+            <View style={styles.emptySection}>
+              <Ionicons name="football-outline" size={40} color="#ccc" />
+              <Text style={styles.emptyText}>Nema odigranih mečeva</Text>
+            </View>
+          );
+        }
+
+        const filteredResults = getFilteredResults();
+        return (
           <View style={styles.resultsSection}>
             <Text style={styles.sectionTitle}>Posljednji odigrani mečevi</Text>
-            {stats.recentResults.map((m, i) => (
-              <View key={i} style={styles.resultCard}>
-                <View style={styles.resultHeader}>
-                  <Text style={styles.resultSport}>{m.sport_name}</Text>
-                  <Text style={styles.resultStage}>{m.Stage || "Završeno"}</Text>
-                </View>
-                <View style={styles.resultBody}>
-                  <Text style={[styles.resultTeam, m.ResultTeam1 > m.ResultTeam2 && styles.resultWinner]}>{m.team1}</Text>
-                  <View style={styles.scoreBadge}>
-                    <Text style={styles.scoreText}>{m.ResultTeam1} : {m.ResultTeam2}</Text>
+            {renderSportToggle()}
+            {filteredResults.length > 0 ? (
+              filteredResults.map((m, i) => (
+                <View key={i} style={styles.resultCard}>
+                  <View style={styles.resultHeader}>
+                    <Text style={styles.resultSport}>{m.sport_name}</Text>
+                    <Text style={styles.resultStage}>{m.Stage || "Završeno"}</Text>
                   </View>
-                  <Text style={[styles.resultTeam, m.ResultTeam2 > m.ResultTeam1 && styles.resultWinner, { textAlign: "right" }]}>{m.team2}</Text>
+                  <View style={styles.resultBody}>
+                    <Text style={[styles.resultTeam, m.ResultTeam1 > m.ResultTeam2 && styles.resultWinner]}>{m.team1}</Text>
+                    <View style={styles.scoreBadge}>
+                      <Text style={styles.scoreText}>{m.ResultTeam1} : {m.ResultTeam2}</Text>
+                    </View>
+                    <Text style={[styles.resultTeam, m.ResultTeam2 > m.ResultTeam1 && styles.resultWinner, { textAlign: "right" }]}>{m.team2}</Text>
+                  </View>
                 </View>
+              ))
+            ) : (
+              <View style={styles.emptySection}>
+                <Ionicons name="football-outline" size={40} color="#ccc" />
+                <Text style={styles.emptyText}>Nema odigranih mečeva za izabrani sport</Text>
               </View>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.emptySection}>
-            <Ionicons name="football-outline" size={40} color="#ccc" />
-            <Text style={styles.emptyText}>Nema odigranih mečeva</Text>
+            )}
           </View>
         );
+      }
       case "faculties":
         return (
           <VerticalBarChart
@@ -114,16 +184,13 @@ const SportStatsScreen = () => {
             barColor="#4CAF50"
           />
         );
-      case "upcoming":
+      case "status":
         return (
-          <TimelineList
-            title="Nadolazeći mečevi"
-            data={(stats?.upcomingMatches || []).map((m) => ({
-              title: `${m.team1} vs ${m.team2}`, subtitle: m.sport_name,
-              date: m.StartDate, location: m.Location,
-              badge: m.Stage || undefined,
+          <SimpleDonutChart
+            title="Status mečeva"
+            data={(stats?.matchStatuses || []).map((r) => ({
+              label: r.Status, value: Number(r.count),
             }))}
-            accentColor="#E91E63"
           />
         );
       default: return null;
@@ -137,8 +204,24 @@ const SportStatsScreen = () => {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <Ionicons name="football" size={28} color="#E91E63" />
-        <Text style={styles.headerTitle}>Statistike sporta</Text>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Ionicons name="football" size={28} color="#E91E63" />
+          <Text style={styles.headerTitle}>Statistike sporta</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.exportBtn, exporting && styles.exportBtnDisabled]}
+          onPress={handleExportPdf}
+          disabled={exporting || !stats}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="download-outline" size={18} color="#fff" />
+          )}
+          <Text style={styles.exportBtnText}>
+            {exporting ? "Izvoz..." : "PDF"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.yearRow}>
@@ -177,8 +260,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5", paddingHorizontal: 16 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f5f5f5" },
   loadingText: { marginTop: 12, color: "#888", fontSize: 14 },
-  header: { flexDirection: "row", alignItems: "center", marginTop: 16, marginBottom: 8 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16, marginBottom: 8 },
   headerTitle: { fontSize: 22, fontWeight: "800", color: "#1a1a2e", marginLeft: 10 },
+  exportBtn: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "#E91E63", paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 8,
+  },
+  exportBtnDisabled: { opacity: 0.6 },
+  exportBtnText: { color: "#fff", fontWeight: "700", fontSize: 13, marginLeft: 6 },
   yearRow: { marginBottom: 14 },
   yearBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, backgroundColor: "#fff", marginRight: 8, borderWidth: 1, borderColor: "#e0e0e0" },
   yearBtnActive: { backgroundColor: "#10345bff", borderColor: "#10345bff" },
@@ -200,6 +290,30 @@ const styles = StyleSheet.create({
   resultWinner: { fontWeight: "800", color: "#1a1a2e" },
   scoreBadge: { backgroundColor: "#10345bff", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginHorizontal: 10 },
   scoreText: { color: "#fff", fontWeight: "800", fontSize: 14, letterSpacing: 1 },
+  toggleRow: {
+    flexDirection: "row",
+    marginBottom: 16,
+  },
+  toggleBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: "#E91E63",
+    marginRight: 8,
+  },
+  toggleBtnActive: {
+    backgroundColor: "#E91E63",
+  },
+  toggleBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#E91E63",
+  },
+  toggleBtnTextActive: {
+    color: "#fff",
+  },
 });
 
 export default SportStatsScreen;
